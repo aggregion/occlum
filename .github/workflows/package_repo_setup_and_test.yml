@@ -160,7 +160,7 @@ jobs:
           force: true
 
       - name: Wait for package repo to deploy
-        run: sleep 600
+        run: sleep 180
 
   Test_deb_package:
     if: ${{ always() }}
