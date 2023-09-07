@@ -1,5 +1,4 @@
 use super::*;
-use nix::errno::Errno as NixErrno;
 
 bitflags! {
     pub struct VMPerms : u32 {
