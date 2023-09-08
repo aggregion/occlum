@@ -60,7 +60,9 @@ impl VMPerms {
             } else {
                 // Without EDMM support, reserved memory permission is statically RWX and we only need to do mprotect ocall.
                 let sgx_status = occlum_ocall_mprotect(&mut retval, addr, len, prot.bits() as i32);
-                if sgx_status != sgx_status_t::SGX_SUCCESS || retval != 0 {
+                if sgx_status != sgx_status_t::SGX_SUCCESS
+                /*|| retval != 0 */
+                {
                     let errno = unsafe { libc::errno() };
                     panic!(
                         "occlum_ocall_mprotect status {}, retval {}, addr {:p}, errno {:?}",
