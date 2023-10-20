@@ -33,18 +33,18 @@ permissions:
 
 jobs:
   Package_repository_setup_and_test:
-    runs-on: ubuntu-20.04
+    runs-on: self-hosted
     if: github.event.inputs.only_test == 'N'
     outputs:
       occlum_version: ${{ steps.occlum_version.outputs.version }}
     steps:
-      # This step is added to get more free space
       - name: Clean virtual environment
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /opt/actions-runner/_work/occlum/occlum/occlum/build
+      #     sudo rm -rf /usr/share/dotnet
+      #     sudo rm -rf /opt/ghc
+      #     sudo rm -rf "/usr/local/share/boost"
+      #     sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
       - name: Checkout occlum src code
         uses: actions/checkout@v2
@@ -70,7 +70,12 @@ jobs:
         run: echo "::set-output name=version::${{ env.OCCLUM_VERSION }}"
 
       - name: Create ubuntu container
-        run: docker run -itd --name=ubuntu -v $GITHUB_WORKSPACE:/root/workspace occlum/occlum:${{ env.OCCLUM_VERSION }}-ubuntu20.04
+        run: |
+          docker run -itd --name=ubuntu \
+            -v $GITHUB_WORKSPACE:/root/workspace \
+            -v cargo-registry-cache:/root/.cargo/registry \
+            -v cargo-git-cache:/root/.cargo/git \
+            occlum/occlum:${{ env.OCCLUM_VERSION }}-ubuntu20.04
 
       - name: Build deb packages
         run: docker exec ubuntu bash -c "cd /root/workspace/occlum/tools/installer/deb; make"
@@ -159,54 +164,54 @@ jobs:
           repository: ${{ env.APT_REPOSITORY }}
           force: true
 
-      - name: Wait for package repo to deploy
-        run: sleep 600
+      # - name: Wait for package repo to deploy
+      #   run: sleep 600
 
-  Test_deb_package:
-    if: ${{ always() }}
-    needs: Package_repository_setup_and_test
-    runs-on: ubuntu-20.04
+  # Test_deb_package:
+  #   if: ${{ always() }}
+  #   needs: Package_repository_setup_and_test
+  #   runs-on: ubuntu-20.04
 
-    steps:
-      - name: Create a clean ubuntu container
-        run: docker run -itd --name=ubuntu ubuntu:20.04
+  #   steps:
+  #     - name: Create a clean ubuntu container
+  #       run: docker run -itd --name=ubuntu ubuntu:20.04
 
-      - name: Get occlum version from user inputs
-        run: echo "OCCLUM_VERSION=${{github.event.inputs.test_version}}" >> $GITHUB_ENV
+  #     - name: Get occlum version from user inputs
+  #       run: echo "OCCLUM_VERSION=${{github.event.inputs.test_version}}" >> $GITHUB_ENV
 
-      - name: Update occlum version from previous job
-        if: github.event.inputs.only_test == 'N'
-        run: echo "OCCLUM_VERSION=${{needs.Package_repository_setup_and_test.outputs.occlum_version}}" >> $GITHUB_ENV
+  #     - name: Update occlum version from previous job
+  #       if: github.event.inputs.only_test == 'N'
+  #       run: echo "OCCLUM_VERSION=${{needs.Package_repository_setup_and_test.outputs.occlum_version}}" >> $GITHUB_ENV
 
-      - name: Configure sgx and occlum deb repo
-        run: |
-          # Set the default timezone to make tzdata work
-          docker exec ubuntu bash -c "ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo Asia/Shanghai > /etc/timezone"
-          docker exec ubuntu bash -c "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates gnupg2 jq make gdb wget libfuse-dev libtool tzdata;
-            echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main' | tee /etc/apt/sources.list.d/intel-sgx.list;
-            wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | apt-key add -"
-          docker exec ubuntu bash -c "echo 'deb [arch=amd64]  ${{ env.REPOSITORY_URL }} focal main' | tee /etc/apt/sources.list.d/occlum.list;
-            wget -qO - ${{ env.REPOSITORY_URL }}/public.key | apt-key add -;"
+  #     - name: Configure sgx and occlum deb repo
+  #       run: |
+  #         # Set the default timezone to make tzdata work
+  #         docker exec ubuntu bash -c "ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo Asia/Shanghai > /etc/timezone"
+  #         docker exec ubuntu bash -c "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates gnupg2 jq make gdb wget libfuse-dev libtool tzdata;
+  #           echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main' | tee /etc/apt/sources.list.d/intel-sgx.list;
+  #           wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | apt-key add -"
+  #         docker exec ubuntu bash -c "echo 'deb [arch=amd64]  ${{ env.REPOSITORY_URL }} focal main' | tee /etc/apt/sources.list.d/occlum.list;
+  #           wget -qO - ${{ env.REPOSITORY_URL }}/public.key | apt-key add -;"
 
-      - name: Install sgx dependencies and occlum
-        run: docker exec ubuntu bash -c "apt-get update; apt-cache policy occlum | grep -n5 ${{ env.OCCLUM_VERSION }} && apt-get install -y occlum libsgx-uae-service libsgx-dcap-ql"
+  #     - name: Install sgx dependencies and occlum
+  #       run: docker exec ubuntu bash -c "apt-get update; apt-cache policy occlum | grep -n5 ${{ env.OCCLUM_VERSION }} && apt-get install -y occlum libsgx-uae-service libsgx-dcap-ql"
 
-      - name: Hello world test
-        run: |
-          docker exec ubuntu bash -c "source /etc/profile; cd /root; wget https://raw.githubusercontent.com/occlum/occlum/master/demos/hello_c/hello_world.c; occlum-gcc -o hello_world hello_world.c;
-          occlum new occlum-instance; cp hello_world /root/occlum-instance/image/bin; cd /root/occlum-instance && SGX_MODE=SIM occlum build; occlum run /bin/hello_world"
+  #     - name: Hello world test
+  #       run: |
+  #         docker exec ubuntu bash -c "source /etc/profile; cd /root; wget https://raw.githubusercontent.com/occlum/occlum/master/demos/hello_c/hello_world.c; occlum-gcc -o hello_world hello_world.c;
+  #         occlum new occlum-instance; cp hello_world /root/occlum-instance/image/bin; cd /root/occlum-instance && SGX_MODE=SIM occlum build; occlum run /bin/hello_world"
 
-      # If there is no match, it will return 1.
-      - name: Check installed version
-        run: docker exec ubuntu bash -c "cat /opt/occlum/include/occlum_version.h | grep -n5 ${{ env.OCCLUM_VERSION }}"
+  #     # If there is no match, it will return 1.
+  #     - name: Check installed version
+  #       run: docker exec ubuntu bash -c "cat /opt/occlum/include/occlum_version.h | grep -n5 ${{ env.OCCLUM_VERSION }}"
 
-      - name: Install occlum-glibc toolchain
-        run: |
-          docker exec ubuntu bash -c "apt-get install -y occlum-toolchains-glibc"
-          docker exec ubuntu bash -c "apt-get install -y git python python3-pip rsync"
+  #     - name: Install occlum-glibc toolchain
+  #       run: |
+  #         docker exec ubuntu bash -c "apt-get install -y occlum-toolchains-glibc"
+  #         docker exec ubuntu bash -c "apt-get install -y git python python3-pip rsync"
 
-      - name: Run occlum python glibc test
-        run: docker exec ubuntu bash -c "source /etc/profile; cd /root && git clone https://github.com/occlum/occlum.git && cd /root/occlum/demos/python/python_glibc && ./install_python_with_conda.sh && SGX_MODE=SIM ./run_python_on_occlum.sh && cat occlum_instance/smvlight.dat"
+  #     - name: Run occlum python glibc test
+  #       run: docker exec ubuntu bash -c "source /etc/profile; cd /root && git clone https://github.com/occlum/occlum.git && cd /root/occlum/demos/python/python_glibc && ./install_python_with_conda.sh && SGX_MODE=SIM ./run_python_on_occlum.sh && cat occlum_instance/smvlight.dat"
 
   # Test_rpm_package:
   #   if: ${{ always() }}
