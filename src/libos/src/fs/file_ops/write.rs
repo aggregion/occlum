@@ -1,7 +1,12 @@
 use super::*;
 
 pub fn do_write(fd: FileDesc, buf: &[u8]) -> Result<usize> {
-    debug!("write: fd: {}", fd);
+    debug!(
+        "write: fd: {}: '{:?}{}'",
+        fd,
+        String::from_utf8_lossy(&buf[..usize::min(buf.len(), 30)]),
+        if buf.len() > 30 { "..." } else { "" }
+    );
     let file_ref = current!().file(fd)?;
     file_ref.write(buf)
 }
