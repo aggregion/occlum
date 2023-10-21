@@ -391,6 +391,7 @@ pub fn do_pipe2(fds_u: *mut i32, flags: u32) -> Result<isize> {
     from_user::check_mut_array(fds_u, 2)?;
     // TODO: how to deal with open flags???
     let fds = pipe::do_pipe2(flags as u32)?;
+
     unsafe {
         *fds_u.offset(0) = fds[0] as c_int;
         *fds_u.offset(1) = fds[1] as c_int;

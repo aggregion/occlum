@@ -530,3 +530,30 @@ pub fn do_get_robust_list(
     }
     Ok(0)
 }
+
+#[repr(C)]
+pub struct CapHeader {
+    version: u32,
+    pid: c_int,
+}
+
+#[repr(C)]
+pub struct CapData {
+    effective: u32,
+    permitted: u32,
+    inheritable: u32,
+}
+
+pub fn do_capget(header: *mut CapHeader, data: *mut CapData) -> Result<isize> {
+    if header.is_null() || data.is_null() {
+        return_errno!(EINVAL, "bad arguments");
+    }
+
+    unsafe {
+        (*data).effective = 0;
+        (*data).permitted = 0;
+        (*data).inheritable = 0;
+    }
+
+    Ok(0)
+}
