@@ -190,6 +190,19 @@ struct OpenAction {
     mode: u32,
 }
 
+#[repr(C)]
+pub struct CapGetHeader {
+    version: u32,
+    pid: c_int,
+}
+
+#[repr(C)]
+pub struct CapGetData {
+    effective: u32,
+    permitted: u32,
+    inheritable: u32,
+}
+
 fn clone_file_actions_from_fa_safely(fa_ptr: *const SpawnFileActions) -> Result<Vec<FileAction>> {
     let mut file_actions = Vec::new();
     if fa_ptr == std::ptr::null() {
@@ -531,23 +544,13 @@ pub fn do_get_robust_list(
     Ok(0)
 }
 
-#[repr(C)]
-pub struct CapHeader {
-    version: u32,
-    pid: c_int,
-}
-
-#[repr(C)]
-pub struct CapData {
-    effective: u32,
-    permitted: u32,
-    inheritable: u32,
-}
-
-pub fn do_capget(header: *mut CapHeader, data: *mut CapData) -> Result<isize> {
+pub fn do_capget(header: *mut CapGetHeader, data: *mut CapGetData) -> Result<isize> {
     if header.is_null() || data.is_null() {
         return_errno!(EINVAL, "bad arguments");
     }
+
+    check_mut_ptr(header)?;
+    check_mut_ptr(data)?;
 
     unsafe {
         (*data).effective = 0;
