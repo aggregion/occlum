@@ -311,8 +311,15 @@ impl VMManager {
                     .chunk_manager_mut()
                     .mprotect(addr, size, perms);
             }
-            ChunkType::SingleVMA(_) => {
+            ChunkType::SingleVMA(vma) => {
                 let mut internal_manager = self.internal();
+                // There are rare cases that mutliple threads do mprotect or munmap for the same single-vma chunk
+                // but for different ranges and the cloned chunk is outdated when acquiring the InternalVMManger lock here.
+                // In this case, we do mprotect again.
+                if chunk.range() != vma.lock().unwrap().range() {
+                    drop(internal_manager);
+                    return self.mprotect(addr, size, perms);
+                }
                 return internal_manager.mprotect_single_vma_chunk(&chunk, protect_range, perms);
             }
         }
@@ -384,6 +391,10 @@ impl VMManager {
                     .msync_by_range(&sync_range);
             }
             ChunkType::SingleVMA(vma) => {
+                // Note: There are rare cases that mutliple threads do mprotect or munmap for the same single-vma chunk
+                // but for different ranges and the cloned chunk is outdated when the code reaches here.
+                // It is fine here because this function doesn't modify the global chunk list and only operates on the vma
+                // which is updated realtimely.
                 let vma = vma.lock().unwrap();
                 vma.flush_backed_file();
             }
