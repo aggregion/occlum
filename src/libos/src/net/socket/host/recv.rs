@@ -31,12 +31,24 @@ impl HostSocket {
         mut name: Option<&mut [u8]>,
         mut control: Option<&mut [u8]>,
     ) -> Result<(usize, usize, usize, MsgHdrFlags)> {
+        let current = current!();
         let data_length = data.iter().map(|s| s.len()).sum();
-        let u_allocator = UntrustedSliceAlloc::new(data_length)?;
+        let mut ocall_alloc;
+        // Allocated slice in untrusted memory region
+        let u_allocator = if data_length > IO_BUF_SIZE {
+            // Ocall allocator
+            ocall_alloc = UntrustedSliceAlloc::new(data_length)?;
+            ocall_alloc.guard()
+        } else {
+            // IO buffer per thread
+            current.io_buffer()
+        };
+
         let mut u_data = {
             let mut bufs = Vec::new();
             for ref buf in data.iter() {
-                bufs.push(u_allocator.new_slice_mut(buf.len())?);
+                let u_slice = u_allocator.new_slice_mut(buf.len())?;
+                bufs.push(u_slice);
             }
             bufs
         };

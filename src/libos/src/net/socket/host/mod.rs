@@ -10,6 +10,8 @@ use crate::fs::{
     IoctlCmd, StatusFlags,
 };
 
+use crate::process::IO_BUF_SIZE;
+
 mod ioctl_impl;
 mod recv;
 mod send;
@@ -36,17 +38,17 @@ impl HostSocket {
             protocol
         )) as FileDesc;
         let host_fd = HostFd::new(raw_host_fd);
-        Ok(HostSocket::from_host_fd(host_fd))
+        Ok(HostSocket::from_host_fd(host_fd)?)
     }
 
-    fn from_host_fd(host_fd: HostFd) -> HostSocket {
+    fn from_host_fd(host_fd: HostFd) -> Result<HostSocket> {
         let host_events = Atomic::new(IoEvents::empty());
         let notifier = IoNotifier::new();
-        Self {
+        Ok(Self {
             host_fd,
             host_events,
             notifier,
-        }
+        })
     }
 
     pub fn bind(&self, addr: &SockAddr) -> Result<()> {
@@ -83,7 +85,7 @@ impl HostSocket {
         } else {
             None
         };
-        Ok((HostSocket::from_host_fd(host_fd), addr_option))
+        Ok((HostSocket::from_host_fd(host_fd)?, addr_option))
     }
 
     pub fn connect(&self, addr: &Option<SockAddr>) -> Result<()> {

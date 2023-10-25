@@ -23,17 +23,30 @@ impl HostSocket {
         name: Option<&[u8]>,
         control: Option<&[u8]>,
     ) -> Result<usize> {
+        let current = current!();
         let data_length = data.iter().map(|s| s.len()).sum();
-        let u_allocator = UntrustedSliceAlloc::new(data_length)?;
+        let mut ocall_alloc;
+        // Allocated slice in untrusted memory region
+        let u_allocator = if data_length > IO_BUF_SIZE {
+            // Ocall allocator
+            ocall_alloc = UntrustedSliceAlloc::new(data_length)?;
+            ocall_alloc.guard()
+        } else {
+            // IO buffer per thread
+            current.io_buffer()
+        };
+
         let u_data = {
             let mut bufs = Vec::new();
             for buf in data {
-                bufs.push(u_allocator.new_slice(buf)?);
+                let u_slice = u_allocator.new_slice(buf)?;
+                bufs.push(u_slice);
             }
             bufs
         };
 
-        self.do_sendmsg_untrusted_data(&u_data, flags, name, control)
+        let retval = self.do_sendmsg_untrusted_data(&u_data, flags, name, control);
+        retval
     }
 
     fn do_sendmsg_untrusted_data(
